@@ -6,7 +6,7 @@ branding:
   icon: alert-octagon
   color: gray-dark
 runs:
-  using: node20
+  using: node24
   main: ./dist/index.js
 inputs:
   token:
@@ -24,7 +24,7 @@ inputs:
   body:
     description: Body content of issue
     required: false
-  milestone: 
+  milestone:
     description: Milestone associated with issue
     required: false
   labels:
