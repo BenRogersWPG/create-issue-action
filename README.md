@@ -4,6 +4,18 @@ The #1 simple and awesome create-issue action on GitHub. 🌟
 
 Basically a converter that takes your yaml entry and connects it to the rest endpoint to create an issue on GitHub.
 
+## Do a new build:
+
+1. Edit package.json version of project
+1. Then do:
+
+```bash
+npm run build
+```
+3. Commit package
+4. Create new release 
+
+
 ## Quick Start (or [jump to advanced](https://github.com/dacbd/create-issue-action#generate-advanced-report)):
 
 ```yml
