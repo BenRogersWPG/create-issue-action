@@ -48,7 +48,12 @@ const listToArray = (str) => {
     }).filter(([_, v]) => v != null));
     Core.debug(`Object for new issue: """${JSON.stringify(opts, null, 2)}"""`)
     // https://docs.github.com/en/rest/reference/issues#create-an-issue
-    const newIssue = await octokit.rest.issues.create(opts);
+    const newIssue = await octokit.rest.issues.create({
+      ...opts,
+      headers: {
+        'X-GitHub-Api-Version': '2026-03-10'
+      }
+    });
     Core.info(`Created: ${newIssue.data.html_url}`)
     Core.setOutput("json", JSON.stringify(newIssue.data));
     Core.setOutput("number", newIssue.data.number);
