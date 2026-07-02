@@ -1,6 +1,6 @@
 {
   "name": "create-issue-action",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Another create a issue on Github actions that strives to be as simple as possible...",
   "main": "src/index.js",
   "scripts": {
@@ -18,10 +18,10 @@
   },
   "homepage": "https://github.com/dacbd/create-issue-action#readme",
   "dependencies": {
-    "@actions/core": "^3.0.0",
-    "@actions/github": "^9.1.1"
+    "@actions/core": "^2.0.0",
+    "@actions/github": "^8.0.0"
   },
   "devDependencies": {
-    "@vercel/ncc": "^0.44.0"
+    "@vercel/ncc": "^0.44.1"
   }
 }
