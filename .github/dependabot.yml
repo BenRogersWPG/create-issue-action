@@ -15,6 +15,8 @@ updates:
     cooldown:
       # Default cooldown for any dependency without a more specific SemVer-level rule below (falls back to 3 days if you omit this entirely).
       default-days: 5      
+    assignees:
+      - "BenRogersWPG"
 
   - package-ecosystem: npm # See documentation for possible values
     directory: "/" # Location of package manifests
@@ -26,6 +28,8 @@ updates:
     cooldown:
       # Default cooldown for any dependency without a more specific SemVer-level rule below (falls back to 3 days if you omit this entirely).
       default-days: 5      
+    assignees:
+      - "BenRogersWPG"
       
   - package-ecosystem: pip # See documentation for possible values
     directory: "/" # Location of package manifests
@@ -37,3 +41,5 @@ updates:
     cooldown:
       # Default cooldown for any dependency without a more specific SemVer-level rule below (falls back to 3 days if you omit this entirely).
       default-days: 5      
+    assignees:
+      - "BenRogersWPG"      
