@@ -8,14 +8,29 @@ updates:
   - package-ecosystem: github-actions # See documentation for possible values
     directory: "/" # Location of package manifests
     schedule:
-      interval: "weekly"
+      interval: "cron"
+      cronjob: "30 14 * * *"
+      timezone: "America/Vancouver"
+    cooldown:
+      # Default cooldown for any dependency without a more specific SemVer-level rule below (falls back to 3 days if you omit this entirely).
+      default-days: 5      
 
   - package-ecosystem: npm # See documentation for possible values
     directory: "/" # Location of package manifests
     schedule:
-      interval: "weekly"
+      interval: "cron"
+      cronjob: "30 14 * * *"
+      timezone: "America/Vancouver"
+    cooldown:
+      # Default cooldown for any dependency without a more specific SemVer-level rule below (falls back to 3 days if you omit this entirely).
+      default-days: 5      
       
   - package-ecosystem: pip # See documentation for possible values
     directory: "/" # Location of package manifests
     schedule:
-      interval: "weekly"
+      interval: "cron"
+      cronjob: "30 14 * * *"
+      timezone: "America/Vancouver"
+    cooldown:
+      # Default cooldown for any dependency without a more specific SemVer-level rule below (falls back to 3 days if you omit this entirely).
+      default-days: 5      
