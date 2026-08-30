@@ -43,7 +43,7 @@ steps:
 | milestone  |                            |   |
 | labels     |                            | A comma seperated list of labels  |
 | assignees  |                            | A comma seperated list of GitHub usernames to assign the issue to  |
-| related    |                            | A comma-separated list of issue numbers to connect with the new issue as "Relates to"  |
+| related    |                            | A comma-separated list of issue numbers to accept; currently this is a no-op because GitHub does not expose a supported API to create "Relates to" links from an action  |
 
 ### Outputs
 
