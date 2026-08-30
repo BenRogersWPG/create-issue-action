@@ -7073,7 +7073,13 @@ function processHeader (request, key, val) {
       } else if (typeof val[i] === 'object') {
         throw new InvalidArgumentError(`invalid ${key} header`)
       } else {
-        arr.push(`${val[i]}`)
+        // Coerce primitives (and reject unsafe coercions such as functions
+        // with a crafted toString/Symbol.toPrimitive).
+        const str = `${val[i]}`
+        if (!isValidHeaderValue(str)) {
+          throw new InvalidArgumentError(`invalid ${key} header`)
+        }
+        arr.push(str)
       }
     }
     val = arr
@@ -7084,7 +7090,12 @@ function processHeader (request, key, val) {
   } else if (val === null) {
     val = ''
   } else {
+    // Coerce primitives (and reject unsafe coercions such as functions
+    // with a crafted toString/Symbol.toPrimitive).
     val = `${val}`
+    if (!isValidHeaderValue(val)) {
+      throw new InvalidArgumentError(`invalid ${key} header`)
+    }
   }
 
   if (headerName === 'host') {
@@ -8461,6 +8472,7 @@ const {
   RequestContentLengthMismatchError,
   ResponseContentLengthMismatchError,
   RequestAbortedError,
+  InvalidArgumentError,
   HeadersTimeoutError,
   HeadersOverflowError,
   SocketError,
@@ -9444,8 +9456,16 @@ function writeH1 (client, request) {
     }
     body = bodyStream.stream
     contentLength = bodyStream.length
-  } else if (util.isBlobLike(body) && request.contentType == null && body.type) {
-    headers.push('content-type', body.type)
+  } else if (util.isBlobLike(body) && request.contentType == null) {
+    const contentType = body.type
+    if (contentType) {
+      const contentTypeValue = `${contentType}`
+      if (!util.isValidHeaderValue(contentTypeValue)) {
+        util.errorRequest(client, request, new InvalidArgumentError('invalid content-type header'))
+        return false
+      }
+      headers.push('content-type', contentTypeValue)
+    }
   }
 
   if (body && typeof body.read === 'function') {
@@ -12932,6 +12952,28 @@ function calculateRetryAfterHeader (retryAfter) {
   return new Date(retryAfter).getTime() - current
 }
 
+function validatePartialResponseContentLength (headers, range, statusCode, retryCount) {
+  const contentLength = headers['content-length']
+  if (contentLength == null) {
+    return null
+  }
+
+  if (!Number.isFinite(range.start) || !Number.isFinite(range.end)) {
+    return null
+  }
+
+  const length = Number(contentLength)
+  const expectedLength = range.end - range.start + 1
+  if (!Number.isFinite(length) || length !== expectedLength) {
+    return new RequestRetryError('Content-Length mismatch', statusCode, {
+      headers,
+      data: { count: retryCount }
+    })
+  }
+
+  return null
+}
+
 class RetryHandler {
   constructor (opts, handlers) {
     const { retryOptions, ...dispatchOpts } = opts
@@ -13146,6 +13188,12 @@ class RetryHandler {
         return false
       }
 
+      const contentLengthError = validatePartialResponseContentLength(headers, contentRange, statusCode, this.retryCount)
+      if (contentLengthError != null) {
+        this.abort(contentLengthError)
+        return false
+      }
+
       const { start, size, end = size - 1 } = contentRange
 
       assert(this.start === start, 'content-range mismatch')
@@ -13167,6 +13215,12 @@ class RetryHandler {
             resume,
             statusMessage
           )
+        }
+
+        const contentLengthError = validatePartialResponseContentLength(headers, range, statusCode, this.retryCount)
+        if (contentLengthError != null) {
+          this.abort(contentLengthError)
+          return false
         }
 
         const { start, size, end = size - 1 } = range
@@ -17440,7 +17494,7 @@ function validateCookiePath (path) {
 
     if (
       code < 0x20 || // exclude CTLs (0-31)
-      code === 0x7F || // DEL
+      code > 0x7E || // exclude DEL and non-ascii
       code === 0x3B // ;
     ) {
       throw new Error('Invalid cookie path')
@@ -17449,16 +17503,80 @@ function validateCookiePath (path) {
 }
 
 /**
- * I have no idea why these values aren't allowed to be honest,
- * but Deno tests these. - Khafra
+ * <let-dig> ::= <letter> | <digit>
+ *
+ * <letter> ::= any one of the 52 alphabetic characters A through Z in
+ * upper case and a through z in lower case
+ *
+ * <digit> ::= any one of the ten digits 0 through 9r
+ *
+ * @see https://www.rfc-editor.org/rfc/rfc1034#section-3.5
+ * @param {number} code
+ */
+function isLetterOrDigit (code) {
+  return (
+    (code >= 0x30 && code <= 0x39) || // 0-9
+    (code >= 0x41 && code <= 0x5A) || // A-Z
+    (code >= 0x61 && code <= 0x7A) // a-z
+  )
+}
+
+/**
+ * Validates a cookie domain against the "preferred name syntax".
+ *
+ * <domain>      ::= <subdomain> | " "
+ * <subdomain>   ::= <label> | <subdomain> "." <label>
+ * <label>       ::= <let-dig> [ [ <ldh-str> ] <let-dig> ]
+ * <ldh-str>     ::= <let-dig-hyp> | <let-dig-hyp> <ldh-str>
+ * <let-dig-hyp> ::= <let-dig> | "-"
+ *
+ * @see https://www.rfc-editor.org/rfc/rfc1034#section-3.5
+ * @see https://www.rfc-editor.org/rfc/rfc1123#section-2.1
+ * @see https://www.rfc-editor.org/rfc/rfc1035#section-2.3.4
  * @param {string} domain
  */
 function validateCookieDomain (domain) {
-  if (
-    domain.startsWith('-') ||
-    domain.endsWith('.') ||
-    domain.endsWith('-')
-  ) {
+  // <domain> ::= <subdomain> | " "
+  if (domain === ' ') {
+    return
+  }
+
+  if (domain.length > 255) {
+    throw new Error('Invalid cookie domain')
+  }
+
+  let labelLength = 0
+
+  for (let i = 0; i < domain.length; ++i) {
+    const code = domain.charCodeAt(i)
+
+    if (code === 0x2E) {
+      if (labelLength === 0) {
+        throw new Error('Invalid cookie domain')
+      }
+
+      if (domain.charCodeAt(i - 1) === 0x2D) { // "-"
+        throw new Error('Invalid cookie domain')
+      }
+
+      labelLength = 0
+      continue
+    }
+
+    if (labelLength === 0 && !isLetterOrDigit(code)) {
+      throw new Error('Invalid cookie domain')
+    }
+
+    if (!isLetterOrDigit(code) && code !== 0x2D) { // "-"
+      throw new Error('Invalid cookie domain')
+    }
+
+    if (++labelLength > 63) {
+      throw new Error('Invalid cookie domain')
+    }
+  }
+
+  if (labelLength === 0 || domain.charCodeAt(domain.length - 1) === 0x2D) { // "-"
     throw new Error('Invalid cookie domain')
   }
 }
@@ -17601,7 +17719,13 @@ function stringify (cookie) {
 
     const [key, ...value] = part.split('=')
 
-    out.push(`${key.trim()}=${value.join('=')}`)
+    const trimmedKey = key.trim()
+    const joinedValue = value.join('=')
+
+    validateCookieName(trimmedKey)
+    validateCookieValue(joinedValue)
+
+    out.push(`${trimmedKey}=${joinedValue}`)
   }
 
   return out.join('; ')
@@ -31696,6 +31820,140 @@ module.exports = {
 
 /***/ }),
 
+/***/ 5105:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const Core = __nccwpck_require__(7484);
+const Github = __nccwpck_require__(3228);
+
+const listToArray = (str) => {
+  const arr = str.split(',');
+  for (let i = 0; i < arr.length; i++) {
+    arr[i] = arr[i].trim();
+  }
+  return arr.filter(Boolean);
+};
+
+const parseIssueNumbers = (str) => {
+  if (!str || str.trim() === '') {
+    return [];
+  }
+
+  return listToArray(str).map((value) => {
+    const match = /^\d+$/.test(value);
+    if (!match) {
+      throw new Error(`Invalid related issue number: "${value}"`);
+    }
+
+    return Number(value);
+  });
+};
+
+const addRelatedIssues = async ({ octokit, owner, repo, issueNodeId, relatedIssueNumbers }) => {
+  if (!relatedIssueNumbers || relatedIssueNumbers.length === 0) {
+    return;
+  }
+
+  for (const issueNumber of relatedIssueNumbers) {
+    const relatedIssue = await octokit.rest.issues.get({
+      owner,
+      repo,
+      issue_number: issueNumber
+    });
+
+    await octokit.graphql(
+      `
+        mutation CreateIssueRelation($issueId: ID!, $relatedIssueId: ID!) {
+          createIssueRelation(input: { issueId: $issueId, relatedIssueId: $relatedIssueId }) {
+            clientMutationId
+          }
+        }
+      `,
+      {
+        issueId: issueNodeId,
+        relatedIssueId: relatedIssue.data.node_id
+      }
+    );
+  }
+};
+
+async function main() {
+  try {
+    const rtrue = { required: true };
+    const token = Core.getInput('token', rtrue);
+    Core.debug(`Using token: ${token}`);
+
+    const repoContext = Github.context.repo;
+    const owner = Core.getInput('owner') || repoContext.owner;
+    const repo = Core.getInput('repo') || repoContext.repo;
+    const title = Core.getInput('title', rtrue);
+    Core.debug(`Using owner: ${owner}`);
+    Core.debug(`Using repo: ${repo}`);
+    Core.debug(`Using title: ${title}`);
+
+    const body = Core.getInput('body');
+    const milestone = Core.getInput('milestone');
+    const labels = Core.getInput('labels');
+    const assignees = Core.getInput('assignees');
+    const related = Core.getInput('related');
+    Core.debug(`Using body: """${body}"""`);
+    Core.debug(`Using milestone: ${milestone}`);
+    Core.debug(`Using labels: ${labels}`);
+    Core.debug(`Using assignees: ${assignees}`);
+    Core.debug(`Using related issues: ${related}`);
+
+    const relatedIssueNumbers = parseIssueNumbers(related);
+    const octokit = Github.getOctokit(token);
+    const opts = Object.fromEntries(Object.entries({
+      owner,
+      repo,
+      title,
+      body: body == '' ? null : body,
+      milestone: milestone == '' ? null : milestone,
+      labels: labels ? listToArray(labels) : null,
+      assignees: assignees ? listToArray(assignees) : null
+    }).filter(([_, v]) => v != null));
+    Core.debug(`Object for new issue: """${JSON.stringify(opts, null, 2)}"""`);
+
+    const newIssue = await octokit.rest.issues.create({
+      ...opts,
+      headers: {
+        'X-GitHub-Api-Version': '2026-03-10'
+      }
+    });
+
+    await addRelatedIssues({
+      octokit,
+      owner,
+      repo,
+      issueNodeId: newIssue.data.node_id,
+      relatedIssueNumbers
+    });
+
+    Core.info(`Created: ${newIssue.data.html_url}`);
+    Core.setOutput('json', JSON.stringify(newIssue.data));
+    Core.setOutput('number', newIssue.data.number);
+    Core.setOutput('html_url', newIssue.data.html_url);
+  } catch (err) {
+    Core.error(err);
+    Core.setFailed('Request to create new issue failed');
+  }
+}
+
+if (require.main === require.cache[eval('__filename')]) {
+  main();
+}
+
+module.exports = {
+  listToArray,
+  parseIssueNumbers,
+  addRelatedIssues,
+  main
+};
+
+
+/***/ }),
+
 /***/ 2613:
 /***/ ((module) => {
 
@@ -36378,6 +36636,9 @@ legacyRestEndpointMethods.VERSION = VERSION;
 /******/ 	}
 /******/ 	
 /************************************************************************/
+/******/ 	/* webpack/runtime/asset-relocator-loader */
+/******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
+/******/ 	
 /******/ 	/* webpack/runtime/define property getters */
 /******/ 	(() => {
 /******/ 		// define getter functions for harmony exports
@@ -36406,79 +36667,13 @@ legacyRestEndpointMethods.VERSION = VERSION;
 /******/ 		};
 /******/ 	})();
 /******/ 	
-/******/ 	/* webpack/runtime/compat */
-/******/ 	
-/******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
-/******/ 	
 /************************************************************************/
-var __webpack_exports__ = {};
-const Core = __nccwpck_require__(7484);
-const Github = __nccwpck_require__(3228);
-
-const listToArray = (str) => {
-  const arr = str.split(',');
-  for (let i = 0; i < arr.length; i++) {
-    arr[i] = arr[i].trim();
-  }
-  return arr;
-};
-
-(async () => {
-
-  try {
-
-    const rtrue = { required: true };
-    const token = Core.getInput('token', rtrue);
-    Core.debug(`Using token: ${token}`);
-
-    // required but defaults not handled by action.yml
-    const repoContext = Github.context.repo;
-    const owner = Core.getInput('owner') || repoContext.owner;
-    const repo = Core.getInput('repo') || repoContext.repo;
-    const title = Core.getInput('title', rtrue);
-    Core.debug(`Using owner: ${owner}`);
-    Core.debug(`Using repo: ${repo}`);
-    Core.debug(`Using title: ${title}`);
-
-    // optional
-    const body = Core.getInput('body');
-    const milestone = Core.getInput('milestone');
-    const labels = Core.getInput('labels');
-    const assignees = Core.getInput('assignees');
-    Core.debug(`Using body: """${body}"""`);
-    Core.debug(`Using milestone: ${milestone}`);
-    Core.debug(`Using labels: ${labels}`);
-    Core.debug(`Using assignees: ${assignees}`);
-
-    const octokit = Github.getOctokit(token);
-    const opts = Object.fromEntries(Object.entries({
-      owner,
-      repo,
-      title,
-      body: body == '' ? null : body,
-      milestone: milestone == '' ? null : milestone,
-      labels: labels ? listToArray(labels) : null,
-      assignees: assignees ? listToArray(assignees) : null
-    }).filter(([_, v]) => v != null));
-    Core.debug(`Object for new issue: """${JSON.stringify(opts, null, 2)}"""`)
-    // https://docs.github.com/en/rest/reference/issues#create-an-issue
-    const newIssue = await octokit.rest.issues.create({
-      ...opts,
-      headers: {
-        'X-GitHub-Api-Version': '2026-03-10'
-      }
-    });
-    Core.info(`Created: ${newIssue.data.html_url}`)
-    Core.setOutput("json", JSON.stringify(newIssue.data));
-    Core.setOutput("number", newIssue.data.number);
-    Core.setOutput("html_url", newIssue.data.html_url);
-  } catch (err) {
-
-    Core.error(err);
-    Core.setFailed('Request to create new issue failed');
-  }
-})();
-
-module.exports = __webpack_exports__;
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module is referenced by other modules so it can't be inlined
+/******/ 	var __webpack_exports__ = __nccwpck_require__(5105);
+/******/ 	module.exports = __webpack_exports__;
+/******/ 	
 /******/ })()
 ;
