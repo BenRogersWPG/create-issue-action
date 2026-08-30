@@ -33,6 +33,9 @@ inputs:
   assignees:
     description: CSV of github usernames to assign (e.x. 'dacbd,nlf')
     required: false
+  related:
+    description: CSV of issue numbers to relate to this issue (e.x. '123,456')
+    required: false
 outputs:
   json:
     description: The JSON for the new created issue returned from the GitHub API

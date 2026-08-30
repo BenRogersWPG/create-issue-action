@@ -1,10 +1,10 @@
 {
   "name": "create-issue-action",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Another create a issue on Github actions that strives to be as simple as possible...",
   "main": "src/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node test/related-issues.test.js",
     "build": "ncc build src/index.js --license LICENSE"
   },
   "repository": {

@@ -13,7 +13,7 @@ Basically a converter that takes your yaml entry and connects it to the rest end
 npm run build
 ```
 3. Commit package
-4. Create new release 
+4. Create new release
 
 
 ## Quick Start (or [jump to advanced](https://github.com/dacbd/create-issue-action#generate-advanced-report)):
@@ -43,6 +43,7 @@ steps:
 | milestone  |                            |   |
 | labels     |                            | A comma seperated list of labels  |
 | assignees  |                            | A comma seperated list of GitHub usernames to assign the issue to  |
+| related    |                            | A comma-separated list of issue numbers to connect with the new issue as "Relates to"  |
 
 ### Outputs
 
@@ -75,7 +76,7 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-    
+
       - name: Create Issue
         uses: dacbd/create-issue-action@main
         with:
@@ -85,21 +86,22 @@ jobs:
 
           # Auto-assign person who triggered the failure.
           assignees: ${{ github.actor }},${{ github.triggering_actor }}
+          related: 123,456
           labels: CICD
           body: |
             ## Failure Report:
-            
+
             > [!IMPORTANT]
             > Details on failed run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-    
+
             - Author: @${{ github.triggering_actor }}
             - Branch: `${{ github.ref }}`
             - Commit: ${{ github.sha }}
             - Workflow Path: `${{ github.workflow_ref }}`
-    
+
             - [ ] **Task**: Review failed run, fix the issue(s), and re-run until successful.
-    
-            > This issue was created automatically by GitHub, 
+
+            > This issue was created automatically by GitHub,
             > through `dacbd/create-issue-action@main` action
             > and KemingHe's contribution.
             > **DO NOT** close this issue until resolved.
