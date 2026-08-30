@@ -31849,34 +31849,15 @@ const parseIssueNumbers = (str) => {
   });
 };
 
-const addRelatedIssues = async ({ octokit, owner, repo, issueNodeId, relatedIssueNumbers }) => {
+const addRelatedIssues = async ({ relatedIssueNumbers }) => {
   if (!relatedIssueNumbers || relatedIssueNumbers.length === 0) {
     return;
   }
 
-  for (const issueNumber of relatedIssueNumbers) {
-    const relatedIssue = await octokit.rest.issues.get({
-      owner,
-      repo,
-      issue_number: issueNumber
-    });
-
-    await octokit.graphql(
-      `
-        mutation CreateIssueLink($sourceIssueId: ID!, $targetIssueId: ID!) {
-          createIssueLink(input: { sourceIssueId: $sourceIssueId, targetIssueId: $targetIssueId }) {
-            issueLink {
-              id
-            }
-          }
-        }
-      `,
-      {
-        sourceIssueId: issueNodeId,
-        targetIssueId: relatedIssue.data.node_id
-      }
-    );
-  }
+  Core.warning(
+    'GitHub does not currently expose a supported API for creating "Relates to" issue relationships from an action. ' +
+    'The issue was created successfully, but the related issue links were not added.'
+  );
 };
 
 async function main() {
@@ -31925,10 +31906,6 @@ async function main() {
     });
 
     await addRelatedIssues({
-      octokit,
-      owner,
-      repo,
-      issueNodeId: newIssue.data.node_id,
       relatedIssueNumbers
     });
 
