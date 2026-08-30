@@ -38,15 +38,17 @@ const addRelatedIssues = async ({ octokit, owner, repo, issueNodeId, relatedIssu
 
     await octokit.graphql(
       `
-        mutation CreateIssueRelation($issueId: ID!, $relatedIssueId: ID!) {
-          createIssueRelation(input: { issueId: $issueId, relatedIssueId: $relatedIssueId }) {
-            clientMutationId
+        mutation CreateIssueLink($sourceIssueId: ID!, $targetIssueId: ID!) {
+          createIssueLink(input: { sourceIssueId: $sourceIssueId, targetIssueId: $targetIssueId }) {
+            issueLink {
+              id
+            }
           }
         }
       `,
       {
-        issueId: issueNodeId,
-        relatedIssueId: relatedIssue.data.node_id
+        sourceIssueId: issueNodeId,
+        targetIssueId: relatedIssue.data.node_id
       }
     );
   }
