@@ -19,7 +19,7 @@
   "homepage": "https://github.com/dacbd/create-issue-action#readme",
   "dependencies": {
     "@actions/core": "^2.0.0",
-    "@actions/github": "^8.0.0"
+    "@actions/github": "^9.1.1"
   },
   "devDependencies": {
     "@vercel/ncc": "^0.45.0"
